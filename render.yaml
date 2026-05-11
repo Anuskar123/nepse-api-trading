@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: nepse-api-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npx tsx backend/server.ts
+    envVars:
+      - key: NODE_VERSION
+        value: 20
