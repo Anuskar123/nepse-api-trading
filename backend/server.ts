@@ -8,6 +8,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Root endpoint to check if server is alive
+app.get('/', (req, res) => {
+  res.send('NEPSE Analysis API is running! Use /api/live for data.');
+});
+
 // Endpoint 1: Live Market Data (Uses the existing merolagani scrape but runs on backend)
 app.get('/api/live', async (req, res) => {
   try {
