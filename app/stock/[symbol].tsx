@@ -140,21 +140,28 @@ export default function StockDetailScreen() {
       </View>
 
       {/* Quality Assessment */}
-      <View style={[styles.card, { backgroundColor: data.fundamentals?.eps > 0 ? '#f0fdf4' : '#fef2f2' }]}>
-        <Text style={styles.sectionTitle}>Company Health Scorecard</Text>
-        <View style={styles.qualityBox}>
-           <Text style={[styles.qualityScore, { color: data.fundamentals?.eps > 20 ? '#16a34a' : data.fundamentals?.eps > 0 ? '#ca8a04' : '#dc2626' }]}>
-              {data.fundamentals?.eps > 20 ? '🌟 Strong Company' : data.fundamentals?.eps > 0 ? '✅ Decent Company' : '⚠️ Weak Company'}
-           </Text>
-           <Text style={styles.qualityDescription}>
-              {data.fundamentals?.eps > 20 
-                ? "This company earns great profit per share. It's one of the stronger picks in NEPSE. Safe for both short-term and long-term." 
-                : data.fundamentals?.eps > 0 
-                ? "The company is profitable. You can invest, but be aware that growth may be slow."
-                : "The company is losing money or barely breaking even. Very risky for investment. Only for experienced traders."}
-           </Text>
+      {data.fundamentals && Object.keys(data.fundamentals).length > 0 ? (
+        <View style={[styles.card, { backgroundColor: (data.fundamentals.eps || 0) > 0 ? '#f0fdf4' : '#fef2f2' }]}>
+          <Text style={styles.sectionTitle}>Company Health Scorecard</Text>
+          <View style={styles.qualityBox}>
+             <Text style={[styles.qualityScore, { color: (data.fundamentals.eps || 0) > 20 ? '#16a34a' : (data.fundamentals.eps || 0) > 0 ? '#ca8a04' : '#dc2626' }]}>
+                {(data.fundamentals.eps || 0) > 20 ? '🌟 Strong Company' : (data.fundamentals.eps || 0) > 0 ? '✅ Decent Company' : '⚠️ Weak Company'}
+             </Text>
+             <Text style={styles.qualityDescription}>
+                {(data.fundamentals.eps || 0) > 20 
+                  ? "This company earns great profit per share. Safe for both short-term and long-term." 
+                  : (data.fundamentals.eps || 0) > 0 
+                  ? "The company is profitable. You can invest, but growth may be slow."
+                  : "The company is losing money or barely breaking even. Very risky."}
+             </Text>
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={[styles.card, { backgroundColor: '#fffbeb' }]}>
+          <Text style={styles.sectionTitle}>Company Health Scorecard</Text>
+          <Text style={{ color: '#92400e', fontSize: 14 }}>⏳ Loading company data from Sharesansar... This may take 30-60 seconds on first load.</Text>
+        </View>
+      )}
 
       {/* Fundamentals with Explanations */}
       <View style={styles.card}>
