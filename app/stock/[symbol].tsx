@@ -140,54 +140,114 @@ export default function StockDetailScreen() {
       </View>
 
       {/* Quality Assessment */}
-      <View style={[styles.card, { backgroundColor: data.fundamentals?.eps > 0 ? '#f0fdf4' : '#fff' }]}>
-        <Text style={styles.sectionTitle}>Financial Quality Assessment</Text>
+      <View style={[styles.card, { backgroundColor: data.fundamentals?.eps > 0 ? '#f0fdf4' : '#fef2f2' }]}>
+        <Text style={styles.sectionTitle}>Company Health Scorecard</Text>
         <View style={styles.qualityBox}>
-           <Text style={[styles.qualityScore, { color: data.fundamentals?.eps > 20 ? '#16a34a' : '#f59e0b' }]}>
-              {data.fundamentals?.eps > 20 ? '🌟 High Quality' : data.fundamentals?.eps > 0 ? '✅ Healthy' : '⚠️ Risky'}
+           <Text style={[styles.qualityScore, { color: data.fundamentals?.eps > 20 ? '#16a34a' : data.fundamentals?.eps > 0 ? '#ca8a04' : '#dc2626' }]}>
+              {data.fundamentals?.eps > 20 ? '🌟 Strong Company' : data.fundamentals?.eps > 0 ? '✅ Decent Company' : '⚠️ Weak Company'}
            </Text>
            <Text style={styles.qualityDescription}>
               {data.fundamentals?.eps > 20 
-                ? "This company has exceptionally strong earnings (EPS), making it a top-tier investment choice." 
+                ? "This company earns great profit per share. It's one of the stronger picks in NEPSE. Safe for both short-term and long-term." 
                 : data.fundamentals?.eps > 0 
-                ? "The company is profitable and stable, suitable for standard portfolios."
-                : "The company is currently struggling with profitability. High risk detected."}
+                ? "The company is profitable. You can invest, but be aware that growth may be slow."
+                : "The company is losing money or barely breaking even. Very risky for investment. Only for experienced traders."}
            </Text>
         </View>
       </View>
 
-      {/* Fundamentals Section */}
+      {/* Fundamentals with Explanations */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Company Fundamentals</Text>
         {data.fundamentals && Object.keys(data.fundamentals).length > 0 ? (
           <>
-            {data.fundamentals.eps && (
-              <View style={styles.indicatorRow}>
-                <Text style={styles.indicatorName}>EPS</Text>
-                <Text style={styles.indicatorValue}>Rs. {data.fundamentals.eps}</Text>
+            {/* EPS */}
+            <View style={styles.fundRow}>
+              <View style={styles.fundLeft}>
+                <Text style={styles.fundLabel}>EPS (Earnings Per Share)</Text>
+                <Text style={styles.fundHint}>How much profit company makes per share. Higher = Better.</Text>
               </View>
-            )}
-            {data.fundamentals.peRatio && (
-              <View style={styles.indicatorRow}>
-                <Text style={styles.indicatorName}>P/E Ratio</Text>
-                <Text style={styles.indicatorValue}>{data.fundamentals.peRatio}</Text>
+              <Text style={[styles.fundValue, { color: (data.fundamentals.eps || 0) > 0 ? '#16a34a' : '#dc2626' }]}>
+                Rs. {data.fundamentals.eps || 'N/A'}
+              </Text>
+            </View>
+
+            {/* P/E Ratio */}
+            <View style={styles.fundRow}>
+              <View style={styles.fundLeft}>
+                <Text style={styles.fundLabel}>P/E Ratio</Text>
+                <Text style={styles.fundHint}>
+                  {(data.fundamentals.peRatio || 0) < 20 ? 'Low P/E = Stock may be undervalued (cheap).' 
+                  : (data.fundamentals.peRatio || 0) < 40 ? 'Normal P/E = Fairly priced stock.'
+                  : 'High P/E = Stock is expensive. Be careful.'}
+                </Text>
               </View>
-            )}
-            {data.fundamentals.bookValue && (
-              <View style={styles.indicatorRow}>
-                <Text style={styles.indicatorName}>Book Value</Text>
-                <Text style={styles.indicatorValue}>Rs. {data.fundamentals.bookValue}</Text>
+              <Text style={[styles.fundValue, { color: (data.fundamentals.peRatio || 0) < 25 ? '#16a34a' : '#f59e0b' }]}>
+                {data.fundamentals.peRatio || 'N/A'}
+              </Text>
+            </View>
+
+            {/* Book Value */}
+            <View style={styles.fundRow}>
+              <View style={styles.fundLeft}>
+                <Text style={styles.fundLabel}>Book Value</Text>
+                <Text style={styles.fundHint}>
+                  {parseFloat(ltp as string) < (data.fundamentals.bookValue || 0) 
+                    ? '🟢 LTP is BELOW book value — you may be getting a bargain!' 
+                    : '🟡 LTP is above book value — the market expects growth.'}
+                </Text>
               </View>
-            )}
+              <Text style={styles.fundValue}>Rs. {data.fundamentals.bookValue || 'N/A'}</Text>
+            </View>
+
+            {/* 1 Year Return */}
             {data.fundamentals.return1Year && (
-              <View style={styles.indicatorRow}>
-                <Text style={styles.indicatorName}>1 Year Return</Text>
-                <Text style={styles.indicatorValue}>{data.fundamentals.return1Year}</Text>
+              <View style={styles.fundRow}>
+                <View style={styles.fundLeft}>
+                  <Text style={styles.fundLabel}>1 Year Return</Text>
+                  <Text style={styles.fundHint}>How much this stock gained or lost in the past year.</Text>
+                </View>
+                <Text style={[styles.fundValue, { color: String(data.fundamentals.return1Year).includes('-') ? '#dc2626' : '#16a34a' }]}>
+                  {data.fundamentals.return1Year}
+                </Text>
+              </View>
+            )}
+
+            {/* 120 Day Return */}
+            {data.fundamentals.return120 && (
+              <View style={styles.fundRow}>
+                <View style={styles.fundLeft}>
+                  <Text style={styles.fundLabel}>120 Days Return</Text>
+                  <Text style={styles.fundHint}>Recent 4-month performance trend.</Text>
+                </View>
+                <Text style={[styles.fundValue, { color: String(data.fundamentals.return120).includes('-') ? '#dc2626' : '#16a34a' }]}>
+                  {data.fundamentals.return120}
+                </Text>
               </View>
             )}
           </>
         ) : (
-          <Text style={{ color: '#6b7280' }}>Fundamentals data not available for this stock.</Text>
+          <View style={styles.noDataBox}>
+            <Text style={styles.noDataText}>⏳ Fundamentals data is loading from Sharesansar. The backend may take ~30s on first wake-up.</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Should You Buy This Stock? */}
+      <View style={[styles.card, { borderWidth: 2, borderColor: getSignalColor(data.analysis.signal) }]}>
+        <Text style={styles.sectionTitle}>💡 Should You Buy This Stock?</Text>
+        <Text style={styles.adviceText}>{data.analysis.verdict?.humanSummary || 'Analysis in progress...'}</Text>
+        
+        {data.fundamentals?.eps > 0 && parseFloat(ltp as string) < (data.fundamentals.bookValue || 999999) && (
+          <View style={[styles.tipBox, { backgroundColor: '#f0fdf4' }]}>
+            <Text style={styles.tipText}>✅ This stock is trading below its book value with positive EPS — this is typically considered a value buy opportunity.</Text>
+          </View>
+        )}
+        
+        {data.fundamentals?.eps <= 0 && (
+          <View style={[styles.tipBox, { backgroundColor: '#fef2f2' }]}>
+            <Text style={styles.tipText}>⛔ This company has negative or zero EPS. Even if the price is going up, the company isn't making money. High risk.</Text>
+          </View>
         )}
       </View>
 
@@ -195,7 +255,12 @@ export default function StockDetailScreen() {
         <Text style={styles.sectionTitle}>Technical Indicators</Text>
         <View style={styles.indicatorRow}>
           <Text style={styles.indicatorName}>RSI (14)</Text>
-          <Text style={styles.indicatorValue}>{data.analysis.rsi.toFixed(2)}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.indicatorValue}>{data.analysis.rsi.toFixed(2)}</Text>
+            <Text style={{ fontSize: 11, color: data.analysis.rsi < 30 ? '#16a34a' : data.analysis.rsi > 70 ? '#dc2626' : '#64748b' }}>
+              {data.analysis.rsi < 30 ? 'Oversold (Cheap)' : data.analysis.rsi > 70 ? 'Overbought (Expensive)' : 'Neutral'}
+            </Text>
+          </View>
         </View>
         <View style={styles.indicatorRow}>
           <Text style={styles.indicatorName}>SMA (50)</Text>
@@ -207,30 +272,18 @@ export default function StockDetailScreen() {
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Professional AI Analysis</Text>
-        
-        {data.analysis.patterns.length > 0 && (
-          <View style={styles.patternSection}>
-            <Text style={styles.patternHeading}>Chart Patterns Detected:</Text>
-            <View style={styles.patternContainer}>
-              {data.analysis.patterns.map((pattern: string, i: number) => (
-                <View key={i} style={styles.patternBadge}>
-                  <Text style={styles.patternText}>✨ {pattern}</Text>
-                </View>
-              ))}
-            </View>
-            <View style={styles.divider} />
+      {data.analysis.patterns.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Chart Patterns Detected</Text>
+          <View style={styles.patternContainer}>
+            {data.analysis.patterns.map((pattern: string, i: number) => (
+              <View key={i} style={styles.patternBadge}>
+                <Text style={styles.patternText}>✨ {pattern}</Text>
+              </View>
+            ))}
           </View>
-        )}
-        
-        {data.analysis.reasons.map((reason: string, index: number) => (
-          <View key={index} style={styles.reasonRow}>
-            <View style={styles.bullet} />
-            <Text style={styles.reasonText}>{reason}</Text>
-          </View>
-        ))}
-      </View>
+        </View>
+      )}
       
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -276,5 +329,17 @@ const styles = StyleSheet.create({
   patternContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   patternBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#dbeafe' },
   patternText: { fontSize: 13, fontWeight: '600', color: '#1d4ed8' },
-  divider: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 16 }
+  divider: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 16 },
+
+  fundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  fundLeft: { flex: 1, marginRight: 12 },
+  fundLabel: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  fundHint: { fontSize: 11, color: '#64748b', marginTop: 3, lineHeight: 15 },
+  fundValue: { fontSize: 17, fontWeight: 'bold', color: '#0f172a' },
+
+  adviceText: { fontSize: 15, color: '#374151', lineHeight: 22, marginBottom: 12 },
+  tipBox: { padding: 12, borderRadius: 10, marginTop: 8 },
+  tipText: { fontSize: 13, lineHeight: 18 },
+  noDataBox: { padding: 12, backgroundColor: '#fefce8', borderRadius: 8 },
+  noDataText: { fontSize: 13, color: '#92400e', lineHeight: 18 },
 });
