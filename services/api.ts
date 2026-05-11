@@ -2,7 +2,7 @@ import axios from 'axios';
 // Replace this with your hosted backend URL (e.g., https://your-app.onrender.com/api)
 // For local testing: http://localhost:3000/api
 // For Expo Go on physical device: http://<YOUR_COMPUTER_IP>:3000/api
-const API_BASE = 'https://nepse-api-trading-backend.onrender.com/api'; 
+const API_BASE = 'https://nepse-api-backend.onrender.com/api'; 
 
 export const fetchLiveMarketData = async () => {
   try {
