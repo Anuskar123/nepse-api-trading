@@ -27,7 +27,7 @@ export default function ScannerScreen() {
   const [result, setResult] = useState<any>(null);
 
   useEffect(() => {
-    fetchLiveMarketData().then(d => { setMarketData(d); setLoading(false); });
+    fetchLiveMarketData().then(res => { setMarketData(res.data || []); setLoading(false); });
   }, []);
 
   const calculate = () => {

@@ -34,28 +34,24 @@ export default function MarketDashboard() {
 
   const loadData = async () => {
     try {
-      const [liveRes, overviewRes] = await Promise.all([
-        fetch('https://nepse-api-trading.onrender.com/api/live'),
-        fetch('https://nepse-api-trading.onrender.com/api/overview').catch(() => null),
+      const [liveRes, overviewData] = await Promise.all([
+        fetchLiveMarketData(),
+        fetchOverview()
       ]);
-      const json = await liveRes.json();
-      const sorted = json.data.sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
-      setData(sorted);
-      setIndices(json.indices || {});
-      setGainers(json.gainers || []);
-      setLosers(json.losers || []);
-      setTopTurnovers(json.topTurnovers || []);
-      if (overviewRes) {
-        const ov = await overviewRes.json();
-        setOverview(ov.data || {});
-      }
-    } catch (e) {
-      const liveData = await fetchLiveMarketData();
+      
+      const liveData = liveRes.data || [];
       const sorted = liveData.sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
+      
       setData(sorted);
-      setGainers([...sorted].sort((a, b) => b.percentChange - a.percentChange).slice(0, 10));
-      setLosers([...sorted].sort((a, b) => a.percentChange - b.percentChange).slice(0, 10));
-      setTopTurnovers([...sorted].sort((a, b) => (b.ltp * b.volume) - (a.ltp * a.volume)).slice(0, 10));
+      setIndices(liveRes.indices || {});
+      setOverview(overviewData || {});
+      
+      // Compute lists (fallback if backend didn't send them)
+      setGainers(liveRes.gainers || [...sorted].sort((a, b) => b.percentChange - a.percentChange).slice(0, 10));
+      setLosers(liveRes.losers || [...sorted].sort((a, b) => a.percentChange - b.percentChange).slice(0, 10));
+      setTopTurnovers(liveRes.topTurnovers || [...sorted].sort((a, b) => b.turnover - a.turnover).slice(0, 10));
+    } catch (e) {
+      console.error("Load failed:", e);
     }
     setLoading(false);
     setRefreshing(false);

@@ -26,7 +26,7 @@ export default function PredictScreen() {
   const [zoomLevel, setZoomLevel] = useState(50);
   const [showPrediction, setShowPrediction] = useState(true);
 
-  useEffect(() => { fetchLiveMarketData().then(d => setAllStocks(d)); }, []);
+  useEffect(() => { fetchLiveMarketData().then(res => setAllStocks(res.data || [])); }, []);
 
   useEffect(() => {
     if (query.length > 0) {
