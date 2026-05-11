@@ -22,6 +22,7 @@ export interface TA_Result {
     stopLoss: number;
     timeframe: string;
     risk: 'Low' | 'Medium' | 'High';
+    humanSummary: string;
   };
 }
 
@@ -32,7 +33,7 @@ export const analyzeStock = (historicalData: any[], fundamentals?: Fundamentals)
   if (closes.length < 20) {
     return {
       rsi: 50, sma50: 0, sma200: 0, macd: {}, signal: 'Hold', reasons: ['Not enough data'], patterns: [],
-      verdict: { action: 'Wait', target: 0, stopLoss: 0, timeframe: 'N/A', risk: 'Medium' }
+      verdict: { action: 'Wait', target: 0, stopLoss: 0, timeframe: 'N/A', risk: 'Medium', humanSummary: "Wait for more market data before making a move." }
     };
   }
 
@@ -45,80 +46,60 @@ export const analyzeStock = (historicalData: any[], fundamentals?: Fundamentals)
   const sma200Result = SMA.calculate({ period: Math.min(200, closes.length), values: closes });
   const currentSMA200 = sma200Result.length > 0 ? sma200Result[sma200Result.length - 1] : currentPrice;
 
-  const macdResult = MACD.calculate({
-    values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9,
-    SimpleMAOscillator: false, SimpleMASignal: false
-  });
-  const currentMACD = macdResult.length > 0 ? macdResult[macdResult.length - 1] : {};
-
   let score = 0;
   const reasons = [];
-  const detectedPatterns = [];
+  const patterns = [];
 
-  // 1. Chart Patterns & Trends
-  if (closes.length >= 60) {
-    const last60 = closes.slice(-60);
-    const min = Math.min(...last60);
-    const lowIndices = [];
-    for (let i = 0; i < last60.length; i++) {
-       if (last60[i] < min * 1.02) lowIndices.push(i);
-    }
-    if (lowIndices.length >= 2 && (lowIndices[lowIndices.length-1] - lowIndices[0] > 20)) {
-       detectedPatterns.push("Double Bottom (Bullish Reversal)");
-       score += 2;
-    }
-  }
-
-  if (currentPrice > currentSMA200) score += 1;
-  else score -= 1;
-
-  // 2. Fundamentals
-  if (fundamentals) {
-    if (fundamentals.peRatio && fundamentals.peRatio < 15) score += 2;
-    if (fundamentals.peRatio && fundamentals.peRatio > 40) score -= 2;
-    if (fundamentals.eps && fundamentals.eps > 0) score += 1;
-    if (fundamentals.bookValue && currentPrice < fundamentals.bookValue) score += 2;
-  }
-
-  // 3. Technicals
-  if (currentRSI < 35) score += 2;
-  if (currentRSI > 65) score -= 2;
-
-  // SIGNAL
-  let signal: TA_Result['signal'] = 'Hold';
-  if (score >= 4) signal = 'Strong Buy';
-  else if (score >= 2) signal = 'Buy';
-  else if (score <= -4) signal = 'Strong Sell';
-  else if (score <= -2) signal = 'Sell';
-
-  // --- CALCULATION OF TARGET & STOP LOSS ---
-  const volatility = Math.max(...closes.slice(-10)) - Math.min(...closes.slice(-10));
-  const target = signal.includes('Buy') ? currentPrice + volatility * 2 : currentPrice - volatility * 1.5;
-  const stopLoss = signal.includes('Buy') ? currentPrice - volatility * 1.2 : currentPrice + volatility * 1.2;
-
-  // Detailed Reasoning
-  if (signal.includes('Buy')) {
-    reasons.push("Strong accumulation phase detected. RSI & Fundamentals align for upside.");
-  } else if (signal.includes('Sell')) {
-    reasons.push("Distribution phase or overvaluation detected. Exit to protect capital.");
+  // Beginner Friendly Reasoning
+  let strengthSummary = "";
+  let safetySummary = "";
+  
+  // Logic
+  if (currentRSI < 30) {
+    score += 2;
+    strengthSummary = "This stock is currently very cheap because many people are selling it in panic. This is often a good time for you to buy.";
+  } else if (currentRSI > 70) {
+    score -= 2;
+    strengthSummary = "The stock has become very expensive recently. Everyone is buying, so the price might fall soon. Be careful!";
   } else {
-    reasons.push("Market consolidation. No clear breakout signal yet.");
+    strengthSummary = "The price is at a normal level right now, not too high and not too low.";
   }
+
+  if (fundamentals) {
+    if (fundamentals.eps && fundamentals.eps > 0) {
+       safetySummary = "This company is making a profit, which makes it a safer choice for your money.";
+       score += 1;
+    } else {
+       safetySummary = "This company is currently not making much profit, which makes it a bit risky.";
+       score -= 1;
+    }
+  }
+
+  let signal: TA_Result['signal'] = 'Hold';
+  if (score >= 3) signal = 'Buy';
+  else if (score <= -3) signal = 'Sell';
+
+  const volatility = Math.max(...closes.slice(-10)) - Math.min(...closes.slice(-10));
+  const target = signal === 'Buy' ? currentPrice + volatility * 2 : currentPrice - volatility * 1.5;
+  const stopLoss = signal === 'Buy' ? currentPrice - volatility * 1.2 : currentPrice + volatility * 1.2;
+
+  const humanSummary = `${strengthSummary} ${safetySummary} Our AI recommends you ${signal === 'Buy' ? 'consider buying some shares' : signal === 'Sell' ? 'think about selling to stay safe' : 'just wait and watch for now'}.`;
 
   return {
     rsi: currentRSI,
     sma50: currentSMA50,
     sma200: currentSMA200,
-    macd: currentMACD,
+    macd: {},
     signal,
     reasons,
-    patterns: detectedPatterns,
+    patterns,
     verdict: {
-      action: signal === 'Strong Buy' ? 'ACCUMULATE HEAVILY' : signal === 'Buy' ? 'ENTER POSITION' : signal === 'Hold' ? 'MAINTAIN' : 'EXIT/SELL',
+      action: signal === 'Buy' ? 'GOOD TIME TO BUY' : signal === 'Sell' ? 'BETTER TO SELL' : 'WAIT AND WATCH',
       target: Number(target.toFixed(2)),
       stopLoss: Number(stopLoss.toFixed(2)),
-      timeframe: score >= 4 ? '15-30 Days' : 'Short Term (7-14 Days)',
-      risk: fundamentals && fundamentals.peRatio && fundamentals.peRatio < 20 ? 'Low' : 'Medium'
+      timeframe: "7-15 Days",
+      risk: score > 0 ? 'Low' : 'Medium',
+      humanSummary
     }
   };
 };

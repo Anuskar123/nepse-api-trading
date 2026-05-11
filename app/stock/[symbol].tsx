@@ -105,6 +105,57 @@ export default function StockDetailScreen() {
         />
       </View>
 
+      {/* Price Performance Stats */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Price Performance</Text>
+        <View style={styles.indicatorRow}>
+          <Text style={styles.indicatorName}>52-Week High</Text>
+          <Text style={[styles.indicatorValue, { color: '#10b981' }]}>Rs. {Math.max(...data.history.map((h: any) => h.high)).toFixed(2)}</Text>
+        </View>
+        <View style={styles.indicatorRow}>
+          <Text style={styles.indicatorName}>52-Week Low</Text>
+          <Text style={[styles.indicatorValue, { color: '#ef4444' }]}>Rs. {Math.min(...data.history.map((h: any) => h.low)).toFixed(2)}</Text>
+        </View>
+        <View style={styles.indicatorRow}>
+          <Text style={styles.indicatorName}>Volatility</Text>
+          <Text style={styles.indicatorValue}>{((Math.max(...data.history.map((h: any) => h.high)) - Math.min(...data.history.map((h: any) => h.low))) / Math.min(...data.history.map((h: any) => h.low)) * 100).toFixed(1)}%</Text>
+        </View>
+      </View>
+
+      {/* Market Activity Today */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Market Activity Today</Text>
+        <View style={styles.indicatorRow}>
+          <Text style={styles.indicatorName}>Traded Units</Text>
+          <Text style={styles.indicatorValue}>
+            {data.history[data.history.length-1]?.volume?.toLocaleString() ?? '0'} units
+          </Text>
+        </View>
+        <View style={styles.indicatorRow}>
+          <Text style={styles.indicatorName}>Estimated Value</Text>
+          <Text style={styles.indicatorValue}>
+            Rs. {((data.history[data.history.length-1]?.volume ?? 0) * parseFloat(ltp as string)).toLocaleString()}
+          </Text>
+        </View>
+      </View>
+
+      {/* Quality Assessment */}
+      <View style={[styles.card, { backgroundColor: data.fundamentals?.eps > 0 ? '#f0fdf4' : '#fff' }]}>
+        <Text style={styles.sectionTitle}>Financial Quality Assessment</Text>
+        <View style={styles.qualityBox}>
+           <Text style={[styles.qualityScore, { color: data.fundamentals?.eps > 20 ? '#16a34a' : '#f59e0b' }]}>
+              {data.fundamentals?.eps > 20 ? '🌟 High Quality' : data.fundamentals?.eps > 0 ? '✅ Healthy' : '⚠️ Risky'}
+           </Text>
+           <Text style={styles.qualityDescription}>
+              {data.fundamentals?.eps > 20 
+                ? "This company has exceptionally strong earnings (EPS), making it a top-tier investment choice." 
+                : data.fundamentals?.eps > 0 
+                ? "The company is profitable and stable, suitable for standard portfolios."
+                : "The company is currently struggling with profitability. High risk detected."}
+           </Text>
+        </View>
+      </View>
+
       {/* Fundamentals Section */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Company Fundamentals</Text>
@@ -216,6 +267,10 @@ const styles = StyleSheet.create({
   footerLabel: { fontSize: 11, color: '#9ca3af' },
   footerValue: { fontSize: 14, fontWeight: '600', color: '#ffffff', marginTop: 2 },
   
+  qualityBox: { marginTop: 4 },
+  qualityScore: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
+  qualityDescription: { fontSize: 14, color: '#4b5563', lineHeight: 20 },
+
   patternSection: { marginBottom: 12 },
   patternHeading: { fontSize: 14, fontWeight: 'bold', color: '#6b7280', marginBottom: 8, textTransform: 'uppercase' },
   patternContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

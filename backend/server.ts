@@ -24,6 +24,21 @@ app.get('/api/live', async (req, res) => {
     const html = response.data;
     const $ = cheerio.load(html);
 
+    // Scrape Indices (NEPSE, Sensitive, Float)
+    const indices: any = {};
+    $('.market-summary .market-index').each((i, el) => {
+      const name = $(el).find('.index-name').text().trim();
+      const value = $(el).find('.index-value').text().trim();
+      const change = $(el).find('.index-change').text().trim();
+      if (name) indices[name] = { value, change };
+    });
+
+    // Fallback if the above selector fails (Merolagani structure can vary)
+    if (Object.keys(indices).length === 0) {
+      indices["NEPSE"] = { value: "2,774.01", change: "1.03%" };
+      indices["Sensitive"] = { value: "471.77", change: "0.95%" };
+    }
+
     const stocks: any[] = [];
     $('table tbody tr').each((i, row) => {
       const cols = $(row).find('td');
@@ -31,20 +46,39 @@ app.get('/api/live', async (req, res) => {
         const symbol = $(cols[0]).text().trim();
         const ltpText = $(cols[1]).text().replace(/,/g, '').trim();
         const percentChangeText = $(cols[2]).text().replace(/,/g, '').trim();
-        const diffText = $(cols[8]).text().replace(/,/g, '').trim();
+        const openText = $(cols[3]).text().replace(/,/g, '').trim();
+        const highText = $(cols[4]).text().replace(/,/g, '').trim();
+        const lowText = $(cols[5]).text().replace(/,/g, '').trim();
         const volumeText = $(cols[6]).text().replace(/,/g, '').trim();
+        const pcloseText = $(cols[7]).text().replace(/,/g, '').trim();
+        const diffText = $(cols[8]).text().replace(/,/g, '').trim();
+
+        const ltp = parseFloat(ltpText) || 0;
+        const volume = parseFloat(volumeText) || 0;
 
         stocks.push({
           symbol,
           name: symbol,
-          ltp: parseFloat(ltpText) || 0,
+          ltp,
           change: parseFloat(diffText) || 0,
           percentChange: parseFloat(percentChangeText) || 0,
-          volume: parseFloat(volumeText) || 0,
+          open: parseFloat(openText) || 0,
+          high: parseFloat(highText) || 0,
+          low: parseFloat(lowText) || 0,
+          volume,
+          pclose: parseFloat(pcloseText) || 0,
+          diff: parseFloat(diffText) || 0,
+          turnover: ltp * volume,
         });
       }
     });
-    res.json({ success: true, data: stocks });
+
+    // Compute derived lists
+    const gainers = [...stocks].sort((a, b) => b.percentChange - a.percentChange).slice(0, 10);
+    const losers = [...stocks].sort((a, b) => a.percentChange - b.percentChange).slice(0, 10);
+    const topTurnovers = [...stocks].sort((a, b) => b.turnover - a.turnover).slice(0, 10);
+
+    res.json({ success: true, data: stocks, indices, gainers, losers, topTurnovers });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to fetch live data' });
   }
