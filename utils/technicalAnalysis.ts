@@ -15,15 +15,24 @@ export interface TA_Result {
   macd: { MACD?: number; signal?: number; histogram?: number };
   signal: 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell';
   reasons: string[];
+  patterns: string[];
+  verdict: {
+    action: string;
+    target: number;
+    stopLoss: number;
+    timeframe: string;
+    risk: 'Low' | 'Medium' | 'High';
+  };
 }
 
 export const analyzeStock = (historicalData: any[], fundamentals?: Fundamentals): TA_Result => {
   const closes = historicalData.map(d => d.close);
   const currentPrice = closes[closes.length - 1];
   
-  if (closes.length < 14) {
+  if (closes.length < 20) {
     return {
-      rsi: 50, sma50: 0, sma200: 0, macd: {}, signal: 'Hold', reasons: ['Not enough data']
+      rsi: 50, sma50: 0, sma200: 0, macd: {}, signal: 'Hold', reasons: ['Not enough data'], patterns: [],
+      verdict: { action: 'Wait', target: 0, stopLoss: 0, timeframe: 'N/A', risk: 'Medium' }
     };
   }
 
@@ -37,91 +46,64 @@ export const analyzeStock = (historicalData: any[], fundamentals?: Fundamentals)
   const currentSMA200 = sma200Result.length > 0 ? sma200Result[sma200Result.length - 1] : currentPrice;
 
   const macdResult = MACD.calculate({
-    values: closes,
-    fastPeriod: 12,
-    slowPeriod: 26,
-    signalPeriod: 9,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false
+    values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9,
+    SimpleMAOscillator: false, SimpleMASignal: false
   });
   const currentMACD = macdResult.length > 0 ? macdResult[macdResult.length - 1] : {};
 
   let score = 0;
   const reasons = [];
+  const detectedPatterns = [];
 
-  // --- FUNDAMENTAL ANALYSIS (From your Guide) ---
+  // 1. Chart Patterns & Trends
+  if (closes.length >= 60) {
+    const last60 = closes.slice(-60);
+    const min = Math.min(...last60);
+    const lowIndices = [];
+    for (let i = 0; i < last60.length; i++) {
+       if (last60[i] < min * 1.02) lowIndices.push(i);
+    }
+    if (lowIndices.length >= 2 && (lowIndices[lowIndices.length-1] - lowIndices[0] > 20)) {
+       detectedPatterns.push("Double Bottom (Bullish Reversal)");
+       score += 2;
+    }
+  }
+
+  if (currentPrice > currentSMA200) score += 1;
+  else score -= 1;
+
+  // 2. Fundamentals
   if (fundamentals) {
-    // P/E Ratio Logic: Generally < 20 is considered undervalued/fair in NEPSE
-    if (fundamentals.peRatio && fundamentals.peRatio > 0) {
-      if (fundamentals.peRatio < 15) {
-        score += 2;
-        reasons.push(`Favorable P/E Ratio (${fundamentals.peRatio.toFixed(2)}). Stock appears undervalued.`);
-      } else if (fundamentals.peRatio > 40) {
-        score -= 2;
-        reasons.push(`High P/E Ratio (${fundamentals.peRatio.toFixed(2)}). Stock may be overvalued.`);
-      }
-    }
-
-    // EPS Logic: Profitability is key
-    if (fundamentals.eps !== undefined) {
-      if (fundamentals.eps > 0) {
-        score += 1;
-        reasons.push(`Positive EPS (Rs. ${fundamentals.eps}). Company is profitable.`);
-      } else {
-        score -= 2;
-        reasons.push(`Negative EPS. Company is currently reporting losses.`);
-      }
-    }
-
-    // Price to Book Value Logic
-    if (fundamentals.bookValue && fundamentals.bookValue > 0) {
-      const priceToBook = currentPrice / fundamentals.bookValue;
-      if (priceToBook < 1) {
-        score += 2;
-        reasons.push(`Trading below Book Value (P/B: ${priceToBook.toFixed(2)}). Strong value play.`);
-      } else if (priceToBook > 5) {
-        score -= 1;
-        reasons.push(`Trading at high P/B ratio (${priceToBook.toFixed(2)}). Overextended valuation.`);
-      }
-    }
+    if (fundamentals.peRatio && fundamentals.peRatio < 15) score += 2;
+    if (fundamentals.peRatio && fundamentals.peRatio > 40) score -= 2;
+    if (fundamentals.eps && fundamentals.eps > 0) score += 1;
+    if (fundamentals.bookValue && currentPrice < fundamentals.bookValue) score += 2;
   }
 
-  // --- TECHNICAL ANALYSIS ---
-  // RSI Logic
-  if (currentRSI < 30) {
-    score += 2;
-    reasons.push(`RSI is ${currentRSI.toFixed(2)} (Oversold). Technical bounce likely.`);
-  } else if (currentRSI > 70) {
-    score -= 2;
-    reasons.push(`RSI is ${currentRSI.toFixed(2)} (Overbought). Possible pullback.`);
-  }
+  // 3. Technicals
+  if (currentRSI < 35) score += 2;
+  if (currentRSI > 65) score -= 2;
 
-  // Moving Average Logic
-  if (currentPrice > currentSMA50) {
-    score += 1;
-    reasons.push(`Bullish short-term: Price is above 50-day SMA.`);
-  } else {
-    score -= 1;
-    reasons.push(`Bearish short-term: Price is below 50-day SMA.`);
-  }
-
-  // MACD Logic
-  if (currentMACD && currentMACD.histogram !== undefined) {
-    if (currentMACD.histogram > 0) {
-      score += 1;
-      reasons.push(`Positive MACD momentum.`);
-    } else {
-      score -= 1;
-      reasons.push(`Negative MACD momentum.`);
-    }
-  }
-
-  // FINAL SIGNAL ASSIGNMENT
+  // SIGNAL
   let signal: TA_Result['signal'] = 'Hold';
   if (score >= 4) signal = 'Strong Buy';
   else if (score >= 2) signal = 'Buy';
   else if (score <= -4) signal = 'Strong Sell';
   else if (score <= -2) signal = 'Sell';
+
+  // --- CALCULATION OF TARGET & STOP LOSS ---
+  const volatility = Math.max(...closes.slice(-10)) - Math.min(...closes.slice(-10));
+  const target = signal.includes('Buy') ? currentPrice + volatility * 2 : currentPrice - volatility * 1.5;
+  const stopLoss = signal.includes('Buy') ? currentPrice - volatility * 1.2 : currentPrice + volatility * 1.2;
+
+  // Detailed Reasoning
+  if (signal.includes('Buy')) {
+    reasons.push("Strong accumulation phase detected. RSI & Fundamentals align for upside.");
+  } else if (signal.includes('Sell')) {
+    reasons.push("Distribution phase or overvaluation detected. Exit to protect capital.");
+  } else {
+    reasons.push("Market consolidation. No clear breakout signal yet.");
+  }
 
   return {
     rsi: currentRSI,
@@ -129,6 +111,14 @@ export const analyzeStock = (historicalData: any[], fundamentals?: Fundamentals)
     sma200: currentSMA200,
     macd: currentMACD,
     signal,
-    reasons
+    reasons,
+    patterns: detectedPatterns,
+    verdict: {
+      action: signal === 'Strong Buy' ? 'ACCUMULATE HEAVILY' : signal === 'Buy' ? 'ENTER POSITION' : signal === 'Hold' ? 'MAINTAIN' : 'EXIT/SELL',
+      target: Number(target.toFixed(2)),
+      stopLoss: Number(stopLoss.toFixed(2)),
+      timeframe: score >= 4 ? '15-30 Days' : 'Short Term (7-14 Days)',
+      risk: fundamentals && fundamentals.peRatio && fundamentals.peRatio < 20 ? 'Low' : 'Medium'
+    }
   };
 };

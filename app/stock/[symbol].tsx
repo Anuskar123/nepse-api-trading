@@ -57,8 +57,42 @@ export default function StockDetailScreen() {
         <Text style={styles.price}>Rs. {ltp ? parseFloat(ltp as string).toFixed(2) : data.history[data.history.length - 1].close.toFixed(2)}</Text>
         <View style={[styles.signalBadge, { backgroundColor: getSignalColor(data.analysis.signal) + '20' }]}>
           <Text style={[styles.signalText, { color: getSignalColor(data.analysis.signal) }]}>
-            AI Recommendation: {data.analysis.signal}
+            {data.analysis.signal}
           </Text>
+        </View>
+      </View>
+
+      {/* AI FINAL VERDICT CARD */}
+      <View style={styles.verdictCard}>
+        <View style={styles.verdictHeader}>
+          <Text style={styles.verdictLabel}>AI FINAL VERDICT</Text>
+          <Text style={[styles.verdictAction, { color: getSignalColor(data.analysis.signal) }]}>
+            {data.analysis.verdict.action}
+          </Text>
+        </View>
+        
+        <View style={styles.verdictGrid}>
+          <View style={styles.verdictBox}>
+            <Text style={styles.verdictBoxLabel}>Target Price</Text>
+            <Text style={[styles.verdictBoxValue, { color: '#10b981' }]}>Rs. {data.analysis.verdict.target}</Text>
+          </View>
+          <View style={styles.verdictBox}>
+            <Text style={styles.verdictBoxLabel}>Stop Loss</Text>
+            <Text style={[styles.verdictBoxValue, { color: '#ef4444' }]}>Rs. {data.analysis.verdict.stopLoss}</Text>
+          </View>
+        </View>
+
+        <View style={styles.verdictFooter}>
+          <View style={styles.footerItem}>
+            <Text style={styles.footerLabel}>Timeframe</Text>
+            <Text style={styles.footerValue}>{data.analysis.verdict.timeframe}</Text>
+          </View>
+          <View style={styles.footerItem}>
+            <Text style={styles.footerLabel}>Risk Level</Text>
+            <Text style={[styles.footerValue, { color: data.analysis.verdict.risk === 'Low' ? '#10b981' : '#f59e0b' }]}>
+              {data.analysis.verdict.risk}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -123,7 +157,22 @@ export default function StockDetailScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>AI Analysis Breakdown</Text>
+        <Text style={styles.sectionTitle}>Professional AI Analysis</Text>
+        
+        {data.analysis.patterns.length > 0 && (
+          <View style={styles.patternSection}>
+            <Text style={styles.patternHeading}>Chart Patterns Detected:</Text>
+            <View style={styles.patternContainer}>
+              {data.analysis.patterns.map((pattern: string, i: number) => (
+                <View key={i} style={styles.patternBadge}>
+                  <Text style={styles.patternText}>✨ {pattern}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={styles.divider} />
+          </View>
+        )}
+        
         {data.analysis.reasons.map((reason: string, index: number) => (
           <View key={index} style={styles.reasonRow}>
             <View style={styles.bullet} />
@@ -152,5 +201,25 @@ const styles = StyleSheet.create({
   indicatorValue: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
   reasonRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#3b82f6', marginTop: 8, marginRight: 12 },
-  reasonText: { flex: 1, fontSize: 15, color: '#374151', lineHeight: 22 }
+  reasonText: { flex: 1, fontSize: 15, color: '#374151', lineHeight: 22 },
+  
+  verdictCard: { backgroundColor: '#111827', margin: 16, padding: 20, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  verdictHeader: { borderBottomWidth: 1, borderBottomColor: '#374151', paddingBottom: 12, marginBottom: 16 },
+  verdictLabel: { fontSize: 12, fontWeight: 'bold', color: '#9ca3af', letterSpacing: 1 },
+  verdictAction: { fontSize: 24, fontWeight: 'bold', marginTop: 4 },
+  verdictGrid: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  verdictBox: { flex: 1, backgroundColor: '#1f2937', padding: 12, borderRadius: 8 },
+  verdictBoxLabel: { fontSize: 12, color: '#9ca3af', marginBottom: 4 },
+  verdictBoxValue: { fontSize: 16, fontWeight: 'bold' },
+  verdictFooter: { flexDirection: 'row', justifyContent: 'space-between' },
+  footerItem: { flex: 1 },
+  footerLabel: { fontSize: 11, color: '#9ca3af' },
+  footerValue: { fontSize: 14, fontWeight: '600', color: '#ffffff', marginTop: 2 },
+  
+  patternSection: { marginBottom: 12 },
+  patternHeading: { fontSize: 14, fontWeight: 'bold', color: '#6b7280', marginBottom: 8, textTransform: 'uppercase' },
+  patternContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  patternBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#dbeafe' },
+  patternText: { fontSize: 13, fontWeight: '600', color: '#1d4ed8' },
+  divider: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 16 }
 });

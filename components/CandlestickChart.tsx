@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Dimensions, Text } from 'react-native';
-import Svg, { Line, Rect, G, Text as SvgText } from 'react-native-svg';
+import Svg, { Line, Rect, G, Polyline, Text as SvgText } from 'react-native-svg';
 
 interface CandleData {
   date: string;
@@ -42,6 +42,15 @@ export default function CandlestickChart({ data, width, height }: Props) {
     return height - ((vol / maxVolume) * volumeHeight);
   };
 
+  // Calculate 20-day SMA for the chart line
+  const sma20Points = data.map((d, i) => {
+    if (i < 19) return null;
+    const slice = data.slice(i - 19, i + 1);
+    const avg = slice.reduce((acc, curr) => acc + curr.close, 0) / 20;
+    const x = padding + i * candleWidth + candleWidth / 2;
+    return `${x},${getY(avg)}`;
+  }).filter(p => p !== null).join(' ');
+
   return (
     <View style={{ backgroundColor: '#fff', borderRadius: 12, paddingVertical: 10 }}>
       <Svg width={width} height={height}>
@@ -51,12 +60,42 @@ export default function CandlestickChart({ data, width, height }: Props) {
         <Line x1={0} y1={getY(minLow + range/2)} x2={width} y2={getY(minLow + range/2)} stroke="#f3f4f6" strokeWidth="1" strokeDasharray="5,5" />
         
         {/* Y-Axis Labels */}
-        <SvgText x={width - 40} y={getY(maxHigh) + 4} fontSize="10" fill="#9ca3af">{maxHigh.toFixed(0)}</SvgText>
-        <SvgText x={width - 40} y={getY(minLow) + 4} fontSize="10" fill="#9ca3af">{minLow.toFixed(0)}</SvgText>
+        <SvgText x={width - 45} y={getY(maxHigh) + 4} fontSize="10" fill="#9ca3af">{maxHigh.toFixed(0)}</SvgText>
+        <SvgText x={width - 45} y={getY(minLow) + 4} fontSize="10" fill="#9ca3af">{minLow.toFixed(0)}</SvgText>
 
+        {/* Volume Bars First (Background) */}
         {data.map((d, i) => {
           const isBull = d.close >= d.open;
-          const color = isBull ? '#10b981' : '#ef4444'; // Green if up, Red if down
+          const color = isBull ? '#10b981' : '#ef4444';
+          const x = padding + i * candleWidth;
+          const vY = getVolY(d.volume);
+          const vHeight = height - vY;
+          return (
+            <Rect
+              key={`vol-${i}`}
+              x={x + spacing / 2}
+              y={vY}
+              width={barWidth}
+              height={Math.max(vHeight, 2)}
+              fill={color}
+              opacity={0.15}
+            />
+          );
+        })}
+
+        {/* SMA 20 Line (The "Proper Line Analysis") */}
+        <Polyline
+          points={sma20Points}
+          fill="none"
+          stroke="#3b82f6"
+          strokeWidth="1.5"
+          opacity={0.8}
+        />
+
+        {/* Candlesticks */}
+        {data.map((d, i) => {
+          const isBull = d.close >= d.open;
+          const color = isBull ? '#10b981' : '#ef4444';
           const x = padding + i * candleWidth;
           
           const yOpen = getY(d.open);
@@ -65,14 +104,10 @@ export default function CandlestickChart({ data, width, height }: Props) {
           const yLow = getY(d.low);
 
           const rectY = Math.min(yOpen, yClose);
-          const rectHeight = Math.max(Math.abs(yOpen - yClose), 1); // Ensure at least 1px height
-          
-          const vY = getVolY(d.volume);
-          const vHeight = height - vY;
+          const rectHeight = Math.max(Math.abs(yOpen - yClose), 1);
 
           return (
-            <G key={i}>
-              {/* Wick */}
+            <G key={`candle-${i}`}>
               <Line 
                 x1={x + candleWidth / 2} 
                 y1={yHigh} 
@@ -81,7 +116,6 @@ export default function CandlestickChart({ data, width, height }: Props) {
                 stroke={color} 
                 strokeWidth="1" 
               />
-              {/* Body */}
               <Rect 
                 x={x + spacing / 2} 
                 y={rectY} 
@@ -89,19 +123,20 @@ export default function CandlestickChart({ data, width, height }: Props) {
                 height={rectHeight} 
                 fill={color} 
               />
-              {/* Volume Bar */}
-              <Rect
-                x={x + spacing / 2}
-                y={vY}
-                width={barWidth}
-                height={vHeight}
-                fill={color}
-                opacity={0.3}
-              />
             </G>
           );
         })}
       </Svg>
+      <View style={styles.legend}>
+        <View style={[styles.dot, { backgroundColor: '#3b82f6' }]} />
+        <Text style={styles.legendText}>SMA 20 (Trend Line)</Text>
+      </View>
     </View>
   );
 }
+
+const styles = {
+  legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  legendText: { fontSize: 11, color: '#6b7280', fontWeight: '500' }
+};
