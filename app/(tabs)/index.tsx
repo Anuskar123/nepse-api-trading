@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
-import { fetchLiveMarketData } from '../../services/api';
+import { fetchLiveMarketData, fetchOverview, fetchMarketStatus } from '../../services/api';
 import { Link } from 'expo-router';
-import { TrendingUp, TrendingDown, BrainCircuit, Flame, ArrowUpRight, ArrowDownRight, Activity, Bell } from 'lucide-react-native';
+import { TrendingUp, TrendingDown, BrainCircuit, Flame, ArrowUpRight, ArrowDownRight, Activity, Bell, Clock, WifiOff } from 'lucide-react-native';
 
 // Sub indices data (updated live when possible, fallback to latest)
 const SUB_INDICES = [
@@ -31,6 +31,9 @@ export default function MarketDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'all' | 'gainers' | 'losers' | 'turnover'>('all');
+  const [marketOpen, setMarketOpen] = useState<boolean | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [fromCache, setFromCache] = useState(false);
 
   const loadData = async () => {
     try {
@@ -45,11 +48,14 @@ export default function MarketDashboard() {
       setData(sorted);
       setIndices(liveRes.indices || {});
       setOverview(overviewData || {});
+      setMarketOpen(liveRes.marketOpen ?? null);
+      setLastUpdated(liveRes.lastUpdated || '');
+      setFromCache(liveRes.fromLocalCache || false);
       
       // Compute lists (fallback if backend didn't send them)
-      setGainers(liveRes.gainers || [...sorted].sort((a, b) => b.percentChange - a.percentChange).slice(0, 10));
-      setLosers(liveRes.losers || [...sorted].sort((a, b) => a.percentChange - b.percentChange).slice(0, 10));
-      setTopTurnovers(liveRes.topTurnovers || [...sorted].sort((a, b) => b.turnover - a.turnover).slice(0, 10));
+      setGainers(liveRes.gainers || [...sorted].sort((a: any, b: any) => b.percentChange - a.percentChange).slice(0, 10));
+      setLosers(liveRes.losers || [...sorted].sort((a: any, b: any) => a.percentChange - b.percentChange).slice(0, 10));
+      setTopTurnovers(liveRes.topTurnovers || [...sorted].sort((a: any, b: any) => b.turnover - a.turnover).slice(0, 10));
     } catch (e) {
       console.error("Load failed:", e);
     }
@@ -85,32 +91,100 @@ export default function MarketDashboard() {
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         <View style={s.header}>
           <Text style={s.title}>NEPSE Terminal</Text>
-          <View style={s.liveRow}><View style={s.pulseDot} /><Text style={s.liveText}>LIVE MARKET</Text></View>
+          {/* Market Status Banner */}
+          <View style={s.statusRow}>
+            {marketOpen === true ? (
+              <>
+                <View style={s.pulseDot} />
+                <Text style={s.liveText}>LIVE MARKET</Text>
+              </>
+            ) : marketOpen === false ? (
+              <>
+                <View style={s.closedDot} />
+                <Text style={s.closedText}>MARKET CLOSED</Text>
+              </>
+            ) : (
+              <>
+                <View style={s.closedDot} />
+                <Text style={s.closedText}>STATUS UNKNOWN</Text>
+              </>
+            )}
+          </View>
+          {/* Last Updated & Cache Info */}
+          {(lastUpdated || fromCache) && (
+            <View style={s.metaRow}>
+              {fromCache && (
+                <View style={s.cacheBadge}>
+                  <WifiOff color="#f59e0b" size={10} />
+                  <Text style={s.cacheText}>Cached</Text>
+                </View>
+              )}
+              {lastUpdated ? (
+                <View style={s.lastUpdatedRow}>
+                  <Clock color="#94a3b8" size={10} />
+                  <Text style={s.lastUpdatedText}>{lastUpdated}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
+
+        {/* Market Closed Banner */}
+        {marketOpen === false && data.length > 0 && (
+          <View style={s.closedBanner}>
+            <Text style={s.closedBannerIcon}>🌙</Text>
+            <View style={s.closedBannerContent}>
+              <Text style={s.closedBannerTitle}>Market is Closed</Text>
+              <Text style={s.closedBannerSub}>
+                Showing last trading session data. LTP and all values reflect the most recent close.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* No Data State */}
+        {data.length === 0 && !loading && (
+          <View style={s.emptyState}>
+            <WifiOff color="#d1d5db" size={48} />
+            <Text style={s.emptyTitle}>Unable to Load Market Data</Text>
+            <Text style={s.emptyText}>The server may be starting up. Pull down to refresh or try again in a moment.</Text>
+            <TouchableOpacity style={s.retryBtn} onPress={onRefresh}>
+              <Text style={s.retryBtnText}>↻ Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Indices */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.indicesBar}>
-          {Object.entries(indices).map(([name, info]: [string, any]) => (
-            <View key={name} style={s.indexItem}>
-              <Text style={s.indexName}>{name}</Text>
-              <Text style={s.indexVal}>{info.value}</Text>
-              <Text style={[s.indexChg, { color: String(info.change).includes('-') ? '#ef4444' : '#10b981' }]}>{info.change}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        {Object.keys(indices).length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.indicesBar}>
+            {Object.entries(indices).map(([name, info]: [string, any]) => (
+              <View key={name} style={s.indexItem}>
+                <Text style={s.indexName}>{name}</Text>
+                <Text style={s.indexVal}>{info.value}</Text>
+                <Text style={[s.indexChg, { color: String(info.change).includes('-') ? '#ef4444' : '#10b981' }]}>{info.change}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        )}
 
         {/* Market Summary */}
-        <View style={s.summaryBar}>
-          <View style={s.summaryItem}><Text style={s.summaryLabel}>Turnover</Text><Text style={s.summaryVal}>Rs. {overview.totalTurnover || '3.87B'}</Text></View>
-          <View style={s.summaryItem}><Text style={s.summaryLabel}>Traded Shares</Text><Text style={s.summaryVal}>{overview.totalTradedShares || '8.7M'}</Text></View>
-          <View style={s.summaryItem}><Text style={s.summaryLabel}>Transactions</Text><Text style={s.summaryVal}>{overview.totalTransactions || '58K'}</Text></View>
-          <View style={s.summaryItem}><Text style={s.summaryLabel}>Scrips</Text><Text style={s.summaryVal}>{overview.totalScripsTaded || '332'}</Text></View>
-        </View>
+        {data.length > 0 && (
+          <View style={s.summaryBar}>
+            <View style={s.summaryItem}><Text style={s.summaryLabel}>Turnover</Text><Text style={s.summaryVal}>Rs. {overview.totalTurnover || '3.87B'}</Text></View>
+            <View style={s.summaryItem}><Text style={s.summaryLabel}>Traded Shares</Text><Text style={s.summaryVal}>{overview.totalTradedShares || '8.7M'}</Text></View>
+            <View style={s.summaryItem}><Text style={s.summaryLabel}>Transactions</Text><Text style={s.summaryVal}>{overview.totalTransactions || '58K'}</Text></View>
+            <View style={s.summaryItem}><Text style={s.summaryLabel}>Scrips</Text><Text style={s.summaryVal}>{overview.totalScripsTaded || '332'}</Text></View>
+          </View>
+        )}
 
         {/* AI Coach */}
         {aiCoach && (
           <View style={s.coachCard}>
-            <View style={s.coachHeader}><BrainCircuit color="#fff" size={16} /><Text style={s.coachTitle}>AI TRADING COACH</Text></View>
+            <View style={s.coachHeader}>
+              <BrainCircuit color="#fff" size={16} />
+              <Text style={s.coachTitle}>AI TRADING COACH</Text>
+              {marketOpen === false && <View style={s.coachClosedBadge}><Text style={s.coachClosedText}>After Hours</Text></View>}
+            </View>
             <View style={s.coachBody}>
               <View style={s.vibeRow}>
                 <View style={[s.vibeBadge, { backgroundColor: aiCoach.vibe === 'BULLISH' ? '#065f46' : '#7f1d1d' }]}><Text style={s.vibeText}>{aiCoach.vibe}</Text></View>
@@ -124,81 +198,89 @@ export default function MarketDashboard() {
         )}
 
         {/* Sub Indices */}
-        <View style={s.sectorCard}>
-          <Text style={s.sectorTitle}>Sector Indices</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {SUB_INDICES.map((si, idx) => (
-              <View key={idx} style={s.sectorChip}>
-                <Text style={s.sectorName}>{si.name}</Text>
-                <Text style={s.sectorVal}>{si.value}</Text>
-                <Text style={[s.sectorChg, { color: si.change.includes('-') ? '#ef4444' : '#10b981' }]}>{si.change}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+        {data.length > 0 && (
+          <View style={s.sectorCard}>
+            <Text style={s.sectorTitle}>Sector Indices</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {SUB_INDICES.map((si, idx) => (
+                <View key={idx} style={s.sectorChip}>
+                  <Text style={s.sectorName}>{si.name}</Text>
+                  <Text style={s.sectorVal}>{si.value}</Text>
+                  <Text style={[s.sectorChg, { color: si.change.includes('-') ? '#ef4444' : '#10b981' }]}>{si.change}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Quick Stats */}
-        <View style={s.statsRow}>
-          <View style={[s.statBox, { backgroundColor: '#f0fdf4' }]}>
-            <ArrowUpRight color="#16a34a" size={18} />
-            <Text style={s.statLabel}>Top Gainer</Text>
-            <Text style={s.statSymbol}>{gainers[0]?.symbol}</Text>
-            <Text style={[s.statChange, { color: '#16a34a' }]}>+{gainers[0]?.percentChange}%</Text>
+        {gainers.length > 0 && losers.length > 0 && topTurnovers.length > 0 && (
+          <View style={s.statsRow}>
+            <View style={[s.statBox, { backgroundColor: '#f0fdf4' }]}>
+              <ArrowUpRight color="#16a34a" size={18} />
+              <Text style={s.statLabel}>Top Gainer</Text>
+              <Text style={s.statSymbol}>{gainers[0]?.symbol}</Text>
+              <Text style={[s.statChange, { color: '#16a34a' }]}>+{gainers[0]?.percentChange}%</Text>
+            </View>
+            <View style={[s.statBox, { backgroundColor: '#fef2f2' }]}>
+              <ArrowDownRight color="#dc2626" size={18} />
+              <Text style={s.statLabel}>Top Loser</Text>
+              <Text style={s.statSymbol}>{losers[0]?.symbol}</Text>
+              <Text style={[s.statChange, { color: '#dc2626' }]}>{losers[0]?.percentChange}%</Text>
+            </View>
+            <View style={[s.statBox, { backgroundColor: '#fefce8' }]}>
+              <Flame color="#ca8a04" size={18} />
+              <Text style={s.statLabel}>Hot Stock</Text>
+              <Text style={s.statSymbol}>{topTurnovers[0]?.symbol}</Text>
+              <Text style={[s.statChange, { color: '#ca8a04' }]}>Rs.{((topTurnovers[0]?.turnover || 0) / 1000000).toFixed(0)}M</Text>
+            </View>
           </View>
-          <View style={[s.statBox, { backgroundColor: '#fef2f2' }]}>
-            <ArrowDownRight color="#dc2626" size={18} />
-            <Text style={s.statLabel}>Top Loser</Text>
-            <Text style={s.statSymbol}>{losers[0]?.symbol}</Text>
-            <Text style={[s.statChange, { color: '#dc2626' }]}>{losers[0]?.percentChange}%</Text>
-          </View>
-          <View style={[s.statBox, { backgroundColor: '#fefce8' }]}>
-            <Flame color="#ca8a04" size={18} />
-            <Text style={s.statLabel}>Hot Stock</Text>
-            <Text style={s.statSymbol}>{topTurnovers[0]?.symbol}</Text>
-            <Text style={[s.statChange, { color: '#ca8a04' }]}>Rs.{((topTurnovers[0]?.turnover || 0) / 1000000).toFixed(0)}M</Text>
-          </View>
-        </View>
+        )}
 
         {/* Tab Switcher */}
-        <View style={s.tabRow}>
-          {(['all', 'gainers', 'losers', 'turnover'] as const).map(t => (
-            <TouchableOpacity key={t} style={[s.tabBtn, tab === t && s.tabBtnActive]} onPress={() => setTab(t)}>
-              <Text style={[s.tabBtnText, tab === t && s.tabBtnTextActive]}>
-                {t === 'all' ? `All (${data.length})` : t === 'gainers' ? '🟢 Gainers' : t === 'losers' ? '🔴 Losers' : '🔥 Turnover'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Table */}
-        <View style={s.tableHeader}>
-          <Text style={[s.colH, { flex: 1.5 }]}>SYMBOL</Text>
-          <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>LTP</Text>
-          <Text style={[s.colH, { flex: 0.8, textAlign: 'right' }]}>CHG%</Text>
-          <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>HIGH</Text>
-          <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>LOW</Text>
-          <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>QTY</Text>
-        </View>
-        {displayList.map((item, idx) => (
-          <Link key={idx} href={{ pathname: "/stock/[symbol]", params: { symbol: item.symbol, ltp: item.ltp } }} asChild>
-            <TouchableOpacity style={s.row}>
-              <View style={{ flex: 1.5 }}>
-                <Text style={s.symbol}>{item.symbol}</Text>
-              </View>
-              <Text style={[s.cell, { flex: 1 }]}>{item.ltp?.toFixed(2)}</Text>
-              <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
-                <View style={[s.changeBadge, { backgroundColor: item.percentChange >= 0 ? '#dcfce7' : '#fee2e2' }]}>
-                  <Text style={[s.changeText, { color: item.percentChange >= 0 ? '#16a34a' : '#dc2626' }]}>
-                    {item.percentChange >= 0 ? '+' : ''}{item.percentChange?.toFixed(2)}%
+        {data.length > 0 && (
+          <>
+            <View style={s.tabRow}>
+              {(['all', 'gainers', 'losers', 'turnover'] as const).map(t => (
+                <TouchableOpacity key={t} style={[s.tabBtn, tab === t && s.tabBtnActive]} onPress={() => setTab(t)}>
+                  <Text style={[s.tabBtnText, tab === t && s.tabBtnTextActive]}>
+                    {t === 'all' ? `All (${data.length})` : t === 'gainers' ? '🟢 Gainers' : t === 'losers' ? '🔴 Losers' : '🔥 Turnover'}
                   </Text>
-                </View>
-              </View>
-              <Text style={[s.cell, { flex: 1, color: '#10b981' }]}>{item.high?.toFixed(2) || '-'}</Text>
-              <Text style={[s.cell, { flex: 1, color: '#ef4444' }]}>{item.low?.toFixed(2) || '-'}</Text>
-              <Text style={[s.cell, { flex: 1 }]}>{item.volume?.toLocaleString() || '-'}</Text>
-            </TouchableOpacity>
-          </Link>
-        ))}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Table */}
+            <View style={s.tableHeader}>
+              <Text style={[s.colH, { flex: 1.5 }]}>SYMBOL</Text>
+              <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>LTP</Text>
+              <Text style={[s.colH, { flex: 0.8, textAlign: 'right' }]}>CHG%</Text>
+              <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>HIGH</Text>
+              <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>LOW</Text>
+              <Text style={[s.colH, { flex: 1, textAlign: 'right' }]}>QTY</Text>
+            </View>
+            {displayList.map((item, idx) => (
+              <Link key={idx} href={{ pathname: "/stock/[symbol]", params: { symbol: item.symbol, ltp: item.ltp } }} asChild>
+                <TouchableOpacity style={s.row}>
+                  <View style={{ flex: 1.5 }}>
+                    <Text style={s.symbol}>{item.symbol}</Text>
+                  </View>
+                  <Text style={[s.cell, { flex: 1 }]}>{item.ltp?.toFixed(2)}</Text>
+                  <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
+                    <View style={[s.changeBadge, { backgroundColor: item.percentChange >= 0 ? '#dcfce7' : '#fee2e2' }]}>
+                      <Text style={[s.changeText, { color: item.percentChange >= 0 ? '#16a34a' : '#dc2626' }]}>
+                        {item.percentChange >= 0 ? '+' : ''}{item.percentChange?.toFixed(2)}%
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[s.cell, { flex: 1, color: '#10b981' }]}>{item.high?.toFixed(2) || '-'}</Text>
+                  <Text style={[s.cell, { flex: 1, color: '#ef4444' }]}>{item.low?.toFixed(2) || '-'}</Text>
+                  <Text style={[s.cell, { flex: 1 }]}>{item.volume?.toLocaleString() || '-'}</Text>
+                </TouchableOpacity>
+              </Link>
+            ))}
+          </>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -211,9 +293,45 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { padding: 20, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
   title: { fontSize: 26, fontWeight: 'bold', color: '#0f172a' },
-  liveRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginRight: 8 },
-  liveText: { color: '#ef4444', fontWeight: 'bold', fontSize: 11, letterSpacing: 1 },
+  
+  // Status indicators
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', marginRight: 8 },
+  liveText: { color: '#16a34a', fontWeight: 'bold', fontSize: 11, letterSpacing: 1 },
+  closedDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#f59e0b', marginRight: 8 },
+  closedText: { color: '#d97706', fontWeight: 'bold', fontSize: 11, letterSpacing: 1 },
+  
+  // Meta info row
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 10 },
+  cacheBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  cacheText: { fontSize: 9, fontWeight: 'bold', color: '#92400e' },
+  lastUpdatedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  lastUpdatedText: { fontSize: 10, color: '#94a3b8' },
+
+  // Market Closed Banner
+  closedBanner: { 
+    flexDirection: 'row', 
+    backgroundColor: '#1e293b', 
+    marginHorizontal: 12, 
+    marginTop: 12, 
+    padding: 14, 
+    borderRadius: 12, 
+    alignItems: 'center',
+    gap: 12,
+  },
+  closedBannerIcon: { fontSize: 24 },
+  closedBannerContent: { flex: 1 },
+  closedBannerTitle: { color: '#f8fafc', fontWeight: 'bold', fontSize: 14 },
+  closedBannerSub: { color: '#94a3b8', fontSize: 11, marginTop: 3, lineHeight: 16 },
+
+  // Empty State
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, paddingHorizontal: 40 },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#374151', marginTop: 16 },
+  emptyText: { fontSize: 14, color: '#9ca3af', textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  retryBtn: { marginTop: 20, backgroundColor: '#2563eb', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
+  retryBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+
+  // Existing styles
   indicesBar: { backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   indexItem: { marginRight: 28 },
   indexName: { fontSize: 10, color: '#64748b', fontWeight: 'bold' },
@@ -225,7 +343,9 @@ const s = StyleSheet.create({
   summaryVal: { fontSize: 11, color: '#fff', fontWeight: 'bold', marginTop: 2 },
   coachCard: { margin: 12, backgroundColor: '#1e293b', borderRadius: 14, overflow: 'hidden' },
   coachHeader: { backgroundColor: '#334155', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  coachTitle: { color: '#fff', fontWeight: 'bold', fontSize: 12, letterSpacing: 1 },
+  coachTitle: { color: '#fff', fontWeight: 'bold', fontSize: 12, letterSpacing: 1, flex: 1 },
+  coachClosedBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  coachClosedText: { color: '#fff', fontWeight: 'bold', fontSize: 9 },
   coachBody: { padding: 12 },
   vibeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   vibeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },

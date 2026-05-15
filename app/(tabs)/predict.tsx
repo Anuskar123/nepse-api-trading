@@ -6,8 +6,13 @@ import {
 import Svg, { Line, Rect, G, Polyline, Text as SvgText, Defs, LinearGradient, Stop, Polygon, Circle } from 'react-native-svg';
 import { fetchLiveMarketData, fetchHistoricalData } from '../../services/api';
 import { analyzeStock } from '../../utils/technicalAnalysis';
+import { 
+  savePrediction, evaluatePredictions, getLearningStats, 
+  getPredictions, getLearningInsight, getAdjustedLevels,
+  type PredictionRecord, type LearningStats 
+} from '../../utils/predictionTracker';
 import { SMA } from 'technicalindicators';
-import { Search, ZoomIn, ZoomOut, Target, TrendingUp, ShieldAlert, Clock, BarChart3 } from 'lucide-react-native';
+import { Search, ZoomIn, ZoomOut, Target, TrendingUp, ShieldAlert, Clock, BarChart3, Brain, Trophy, AlertCircle, CheckCircle2 } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - 32;
@@ -25,8 +30,22 @@ export default function PredictScreen() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [zoomLevel, setZoomLevel] = useState(50);
   const [showPrediction, setShowPrediction] = useState(true);
+  const [stats, setStats] = useState<LearningStats | null>(null);
+  const [pastPredictions, setPastPredictions] = useState<PredictionRecord[]>([]);
+  const [showScorecard, setShowScorecard] = useState(false);
 
-  useEffect(() => { fetchLiveMarketData().then(res => setAllStocks(res.data || [])); }, []);
+  useEffect(() => {
+    fetchLiveMarketData().then(async (res) => {
+      const stockData = res.data || [];
+      setAllStocks(stockData);
+      // Evaluate pending predictions against fresh data
+      if (stockData.length > 0) {
+        await evaluatePredictions(stockData);
+      }
+      setStats(getLearningStats());
+      setPastPredictions(getPredictions());
+    });
+  }, []);
 
   useEffect(() => {
     if (query.length > 0) {
@@ -45,6 +64,21 @@ export default function PredictScreen() {
     setHistory(hist);
     setAnalysis(result);
     setLoading(false);
+
+    // Save prediction to tracker for self-learning
+    if (result.verdict) {
+      const adjusted = getAdjustedLevels(result.verdict.target, result.verdict.stopLoss, stock.ltp);
+      await savePrediction(
+        stock.symbol,
+        stock.ltp,
+        adjusted.target,
+        adjusted.stopLoss,
+        result.signal,
+        result.verdict.timeframe
+      );
+      setStats(getLearningStats());
+      setPastPredictions(getPredictions());
+    }
   };
 
   const buildPrediction = (lastPrice: number, target: number, days: number) => {
@@ -71,30 +105,37 @@ export default function PredictScreen() {
     return [...histSlice, ...prediction];
   }, [history, zoomLevel, showPrediction, analysis]);
 
-  // Compute SMA lines
+  // Safe chart math — MUST be computed before getXFn/getYFn and sma20Points
+  const chartMath = useMemo(() => {
+    const highs = chartData.length ? chartData.map(d => d.high) : [1];
+    const lows = chartData.length ? chartData.map(d => d.low) : [0];
+    const maxHigh = Math.max(...highs);
+    const minLow = Math.min(...lows);
+    const range = maxHigh - minLow || 1;
+    const candleWidth = Math.max((CHART_WIDTH - PAD.left - PAD.right) / (chartData.length || 1) * 0.65, 2);
+    const priceLabels = [0, 0.25, 0.5, 0.75, 1].map(f => minLow + range * (1 - f));
+    return { maxHigh, minLow, range, candleWidth, priceLabels };
+  }, [chartData]);
+
+  const { minLow, range: priceRange, candleWidth, priceLabels } = chartMath;
+
+  const getXFn = (i: number) => PAD.left + (i * (CHART_WIDTH - PAD.left - PAD.right)) / (chartData.length || 1);
+  const getYFn = (v: number) => PAD.top + (CHART_HEIGHT - PAD.top - PAD.bottom) * (1 - (v - minLow) / priceRange);
+
+  // Compute SMA lines — uses getXFn/getYFn which now have valid minLow/range
   const sma20Points = useMemo(() => {
     if (chartData.length < 20) return '';
     const closes = chartData.map(d => d.close);
     const sma = SMA.calculate({ period: 20, values: closes });
     const offset = closes.length - sma.length;
-    return sma.map((v, i) => `${getXFn(i + offset)},${getYFn(v)}`).join(' ');
-  }, [chartData]);
+    return sma.map((v, i) => {
+      const x = PAD.left + ((i + offset) * (CHART_WIDTH - PAD.left - PAD.right)) / (chartData.length || 1);
+      const y = PAD.top + (CHART_HEIGHT - PAD.top - PAD.bottom) * (1 - (v - minLow) / priceRange);
+      return `${x},${y}`;
+    }).join(' ');
+  }, [chartData, minLow, priceRange]);
 
-  // Safe chart math
-  const highs = chartData.length ? chartData.map(d => d.high) : [1];
-  const lows = chartData.length ? chartData.map(d => d.low) : [0];
-  const maxHigh = Math.max(...highs);
-  const minLow = Math.min(...lows);
-  const range = maxHigh - minLow || 1;
-
-  function getXFn(i: number) { return PAD.left + (i * (CHART_WIDTH - PAD.left - PAD.right)) / (chartData.length || 1); }
-  function getYFn(v: number) { return PAD.top + (CHART_HEIGHT - PAD.top - PAD.bottom) * (1 - (v - minLow) / range); }
-
-  const candleWidth = Math.max((CHART_WIDTH - PAD.left - PAD.right) / (chartData.length || 1) * 0.65, 2);
   const histCount = history.slice(-zoomLevel).length;
-
-  // Price labels for Y axis
-  const priceLabels = [0, 0.25, 0.5, 0.75, 1].map(f => minLow + range * (1 - f));
 
   return (
     <SafeAreaView style={s.container}>
@@ -294,6 +335,108 @@ export default function PredictScreen() {
           </>
         )}
 
+        {/* AI Learning Scorecard */}
+        {stats && stats.totalPredictions > 0 && (
+          <View style={s.scorecardOuter}>
+            <TouchableOpacity style={s.scorecardToggle} onPress={() => setShowScorecard(!showScorecard)}>
+              <View style={s.scorecardToggleLeft}>
+                <Brain color="#7c3aed" size={20} />
+                <Text style={s.scorecardToggleTitle}>AI Learning Scorecard</Text>
+              </View>
+              <View style={s.scorecardBadge}>
+                <Text style={s.scorecardBadgeText}>{stats.totalPredictions} Predictions</Text>
+              </View>
+            </TouchableOpacity>
+
+            {showScorecard && (
+              <View style={s.scorecardBody}>
+                {/* Accuracy Overview */}
+                <View style={s.accuracyRow}>
+                  <View style={s.accuracyCircle}>
+                    <Text style={s.accuracyPct}>{stats.overallAccuracy}%</Text>
+                    <Text style={s.accuracyLabel}>Overall</Text>
+                  </View>
+                  <View style={s.accuracyCircle}>
+                    <Text style={s.accuracyPct}>{stats.directionAccuracy}%</Text>
+                    <Text style={s.accuracyLabel}>Direction</Text>
+                  </View>
+                  <View style={s.accuracyCircle}>
+                    <Text style={s.accuracyPct}>{stats.streakCurrent}</Text>
+                    <Text style={s.accuracyLabel}>Streak</Text>
+                  </View>
+                  <View style={s.accuracyCircle}>
+                    <Text style={s.accuracyPct}>{stats.confidenceMultiplier.toFixed(2)}x</Text>
+                    <Text style={s.accuracyLabel}>Confidence</Text>
+                  </View>
+                </View>
+
+                {/* Stats Grid */}
+                <View style={s.statsGrid}>
+                  <View style={[s.statItem, { backgroundColor: '#f0fdf4' }]}>
+                    <Text style={[s.statNum, { color: '#16a34a' }]}>{stats.correctPredictions}</Text>
+                    <Text style={s.statDesc}>Correct</Text>
+                  </View>
+                  <View style={[s.statItem, { backgroundColor: '#fef2f2' }]}>
+                    <Text style={[s.statNum, { color: '#dc2626' }]}>{stats.wrongPredictions}</Text>
+                    <Text style={s.statDesc}>Wrong</Text>
+                  </View>
+                  <View style={[s.statItem, { backgroundColor: '#fefce8' }]}>
+                    <Text style={[s.statNum, { color: '#ca8a04' }]}>{stats.pendingPredictions}</Text>
+                    <Text style={s.statDesc}>Pending</Text>
+                  </View>
+                  <View style={[s.statItem, { backgroundColor: '#f0f9ff' }]}>
+                    <Text style={[s.statNum, { color: '#2563eb' }]}>{stats.streakBest}</Text>
+                    <Text style={s.statDesc}>Best Streak</Text>
+                  </View>
+                </View>
+
+                {/* Learning Insight */}
+                <View style={s.insightBox}>
+                  <Text style={s.insightText}>{getLearningInsight()}</Text>
+                </View>
+
+                {/* Recent Predictions Log */}
+                <Text style={s.predLogTitle}>Recent Predictions</Text>
+                {pastPredictions.slice(0, 10).map((pred) => (
+                  <View key={pred.id} style={s.predLogRow}>
+                    <View style={s.predLogLeft}>
+                      <View style={s.predLogIconRow}>
+                        {pred.outcome === 'HIT_TARGET' || pred.outcome === 'PARTIAL_CORRECT' ? (
+                          <CheckCircle2 color="#16a34a" size={14} />
+                        ) : pred.outcome === 'PENDING' ? (
+                          <Clock color="#ca8a04" size={14} />
+                        ) : (
+                          <AlertCircle color="#dc2626" size={14} />
+                        )}
+                        <Text style={s.predLogSymbol}>{pred.symbol}</Text>
+                        <View style={[s.predLogSignalBadge, {
+                          backgroundColor: pred.predictedDirection === 'UP' ? '#dcfce7' : pred.predictedDirection === 'DOWN' ? '#fee2e2' : '#f1f5f9'
+                        }]}>
+                          <Text style={[s.predLogSignalText, {
+                            color: pred.predictedDirection === 'UP' ? '#16a34a' : pred.predictedDirection === 'DOWN' ? '#dc2626' : '#64748b'
+                          }]}>{pred.predictedDirection === 'UP' ? '▲' : pred.predictedDirection === 'DOWN' ? '▼' : '●'} {pred.predictedSignal}</Text>
+                        </View>
+                      </View>
+                      <Text style={s.predLogDetail}>
+                        Entry: Rs.{pred.priceAtPrediction.toFixed(0)} → Target: Rs.{pred.predictedTarget.toFixed(0)}
+                      </Text>
+                      {pred.notes && <Text style={s.predLogNotes}>{pred.notes}</Text>}
+                    </View>
+                    <View style={s.predLogRight}>
+                      {pred.accuracyScore !== undefined && (
+                        <Text style={[s.predLogScore, {
+                          color: pred.accuracyScore >= 70 ? '#16a34a' : pred.accuracyScore >= 40 ? '#ca8a04' : '#dc2626'
+                        }]}>{pred.accuracyScore}%</Text>
+                      )}
+                      <Text style={s.predLogDate}>{new Date(pred.predictedAt).toLocaleDateString()}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -351,4 +494,35 @@ const s = StyleSheet.create({
   beginnerCard: { marginTop: 16, backgroundColor: '#f0fdf4', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0' },
   beginnerTitle: { fontSize: 14, fontWeight: 'bold', color: '#166534', marginBottom: 6 },
   beginnerText: { fontSize: 13, color: '#15803d', lineHeight: 19 },
+
+  // Scorecard styles
+  scorecardOuter: { margin: 12, backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#ede9fe' },
+  scorecardToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
+  scorecardToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scorecardToggleTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
+  scorecardBadge: { backgroundColor: '#ede9fe', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  scorecardBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#7c3aed' },
+  scorecardBody: { padding: 14, paddingTop: 0, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  accuracyRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 16 },
+  accuracyCircle: { alignItems: 'center', width: 72, height: 72, justifyContent: 'center', borderRadius: 36, backgroundColor: '#f8fafc', borderWidth: 2, borderColor: '#e2e8f0' },
+  accuracyPct: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
+  accuracyLabel: { fontSize: 9, color: '#94a3b8', fontWeight: '600', marginTop: 1 },
+  statsGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  statItem: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
+  statNum: { fontSize: 18, fontWeight: 'bold' },
+  statDesc: { fontSize: 9, color: '#64748b', fontWeight: '600', marginTop: 2 },
+  insightBox: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#7c3aed' },
+  insightText: { fontSize: 12, color: '#374151', lineHeight: 18 },
+  predLogTitle: { fontSize: 13, fontWeight: 'bold', color: '#64748b', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 },
+  predLogRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f8fafc' },
+  predLogLeft: { flex: 1 },
+  predLogIconRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  predLogSymbol: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  predLogSignalBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  predLogSignalText: { fontSize: 10, fontWeight: 'bold' },
+  predLogDetail: { fontSize: 11, color: '#64748b', marginTop: 4 },
+  predLogNotes: { fontSize: 11, color: '#374151', marginTop: 3, fontStyle: 'italic' },
+  predLogRight: { alignItems: 'flex-end', justifyContent: 'center' },
+  predLogScore: { fontSize: 14, fontWeight: 'bold' },
+  predLogDate: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
 });
